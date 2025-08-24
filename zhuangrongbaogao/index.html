@@ -34,14 +34,20 @@
     .stage{ display:flex; justify-content:center; gap:24px; align-items:flex-start; }
 
     .template-wrap{ position:relative; width:min(820px, 92vw); aspect-ratio: 1240 / 1754; }
-    .template-wrap img{ width:100%; height:auto; display:block; border-radius:18px; box-shadow:0 14px 40px rgba(123,68,255,.15); user-select:none; -webkit-user-drag:none; }
+    .template-wrap img{ width:100%; height:auto; display:block; border-radius:18px; box-shadow:0 14px 40px rgba(123,68,255,.15); user-select:none; -webkit-user-drag:none;  position: relative;   /* 新增 */
+  z-index: 1;           /* 新增 */ }
 
-    .overlay{ position:absolute; inset:0; /* 可点击 */ }
+    .overlay{ position:absolute; inset:0; /* 可点击 */  position: absolute;
+  inset: 0;
+  z-index: 2;           /* 新增：确保在图片之上 */
+  pointer-events: auto; /* 明确可点击（可保留） */ }
     .field{ position:absolute; pointer-events:auto; }
     .field input{
       width:100%; height:100%; padding:0 14px; outline:none; border-radius:var(--radius);
       border:var(--input-border); background:transparent; box-shadow:none;
       font-size:var(--font-size); line-height:1.2; color:#333; font-family:var(--font);
+      background: rgba(255,255,255,.75);
+      backdrop-filter: blur(2px);
     }
 
     /* 百分比定位（随图缩放不偏移） */
@@ -361,5 +367,6 @@
   </script>
 </body>
 </html>
+
 
 
