@@ -33,10 +33,10 @@
     /* 左模版 + 右预览 */
     .stage{ display:flex; justify-content:center; gap:24px; align-items:flex-start; }
 
-    .template-wrap{ position:relative; width:min(820px, 92vw); }
+    .template-wrap{ position:relative; width:min(820px, 92vw); aspect-ratio: 1240 / 1754; }
     .template-wrap img{ width:100%; height:auto; display:block; border-radius:18px; box-shadow:0 14px 40px rgba(123,68,255,.15); user-select:none; -webkit-user-drag:none; }
 
-    .overlay{ position:absolute; inset:0; pointer-events:none; }
+    .overlay{ position:absolute; inset:0; /* 可点击 */ }
     .field{ position:absolute; pointer-events:auto; }
     .field input{
       width:100%; height:100%; padding:0 14px; outline:none; border-radius:var(--radius);
@@ -79,7 +79,7 @@
     <!-- 左：模版与编辑框（等比缩放） -->
     <div class="template-wrap" id="wrap">
       <!-- 如果这张图加载失败，会在同位置显示可点击的提示，让你选择本地图片作为背景 -->
-      <img id="tpl" src="妆容报告.png" alt="妆容报告模版" />
+      <img id="tpl" src="template.png" alt="妆容报告模版" />
       <div id="bgTip" style="display:none;position:absolute;left:0;top:45%;width:100%;text-align:center;color:#888;">
         未找到/无法导出背景图，点击这里选择一张本地图片
       </div>
@@ -361,4 +361,5 @@
   </script>
 </body>
 </html>
+
 
