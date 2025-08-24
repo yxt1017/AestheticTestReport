@@ -1,396 +1,339 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
+  <title>妆容报告生成器（支持 Ctrl+滚轮缩放）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>妆容报告模版（等比例编辑框 + 预览 + 批量导出）</title>
+  <!-- 依赖库 -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
-    :root{
-      --accent: #4CAF50; /* 绿色 */
-      --radius: 12px;
-      --shadow: 0 6px 18px rgba(0,0,0,.08);
-      --input-border: 1px solid rgba(0,0,0,.08);
-      --font: "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", Arial, "Noto Sans CJK", sans-serif;
-      --font-size: 2vw; 
-    }
+    :root { --baseW: 750; }
 
-    *{box-sizing:border-box}
-    body{ margin:0; padding:24px; font-family:var(--font); background:#faf7ff; color:#222; }
+    * { box-sizing: border-box; }
+    body { font-family: 'Microsoft YaHei', system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", Arial, sans-serif; background:#f5f5f5; margin:0; padding:16px; color:#111; }
 
-    /* 顶部按钮与模版同宽 */
+    /* ===== 工具栏（单独一行，固定四个按钮，不换行，可整体水平偏移） ===== */
     .toolbar{
-      display:flex; justify-content:space-between; align-items:center; gap:2%; flex-wrap:nowrap;
-      width:min(820px, 92vw); margin:0 auto 20px;
-      transform: translateX(-20.8%);
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: center;
+      align-items: center;
+      gap: 5px;
+      width: max-content;             /* 按内容收缩宽度 */
+      margin: 0 auto 20px;            /* 先居中 */
+      transform: translateX(-100px);  /* 再整体向左偏移（需要就调这个数） */
     }
-    .toolbar button{
-      flex:1; padding:10px 0; margin:0; border:none; background:var(--accent);
-      border-radius:10px; cursor:pointer; box-shadow:var(--shadow);
-      color:#fff; font-size:14px; font-weight:500;
+    .toolbar::-webkit-scrollbar{ height: 6px; }
+    .toolbar::-webkit-scrollbar-thumb{ background: rgba(0,0,0,.2); border-radius: 3px; }
+    .toolbar button, .toolbar label{
+      display: inline-flex; align-items: center; justify-content: center;
+      height: 36px; padding: 0 12px; min-width: 110px; font-size: 14px;
+      background-color: #28a745; color: #fff; border: none; border-radius: 8px; cursor: pointer;
     }
-    .toolbar button:hover{ background:#45a049; }
+    .toolbar button:hover, .toolbar label:hover { background-color: #218838; }
+    .toolbar button:active, .toolbar label:active { transform: translateY(1px); }
+    .toolbar input[type=file]{ display:none; }
 
-    /* 左模版 + 右预览 */
-    .stage{ display:flex; justify-content:center; gap:24px; align-items:flex-start; }
+    /* ===== 主体两栏：模版框 + 缩略图，整体居中 ===== */
+    .content{
+      display: flex;
+      justify-content: center;   /* 👈 两栏整体居中 */
+      align-items: flex-start;
+      gap: 16px;                 /* 两栏间距 */
+    }
+    .content > .stage,
+    .content > .thumb{ flex: 0 0 auto; }
 
-    /* 1) 容器有固定宽高比例 */
-.template-wrap{
-  position: relative;
-  width: min(820px, 92vw);
-  aspect-ratio: 1240 / 1754;
-}
+    /* 右侧缩略图栏 */
+    .thumb{
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      min-width: 220px;
+    }
 
-/* 2) 背景图绝对定位铺满容器，位于下层 */
-.template-wrap img{
-  position: absolute;        /* 改：从普通流改为绝对定位 */
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 18px;
-  box-shadow: 0 14px 40px rgba(123,68,255,.15);
-  user-select: none;
-  -webkit-user-drag: none;
-  z-index: 1;                /* 在下 */
-}
+    /* ===== 框架：模版整体缩放，编辑框随之缩放 ===== */
+    .frame{
+      position: relative;
+      width: 0; height: 0;       /* JS 设置为 baseW*finalScale / baseH*finalScale */
+      margin: 0 auto;
+      overflow: hidden;
+      border: 1px solid #ddd; border-radius: 8px; background: #fff;
+    }
+    .frameInner{
+      position: absolute; left: 0; top: 0;
+      width: 0; height: 0;       /* JS 设置为 baseW / baseH */
+      transform-origin: top left;
+    }
+    .bg{
+      position: absolute; left:0; top:0; width:100%; height:100%;
+      object-fit: contain; pointer-events: none; user-select: none;
+    }
 
-/* 3) 覆盖层放在上层并可点击 */
-.overlay{
-  position: absolute;
-  inset: 0;
-  z-index: 9;                /* 在上（比图片大） */
-  pointer-events: auto;
-}
+    /* ===== 文本输入框（基准像素坐标） ===== */
+    .field-input {
+      position:absolute; width:260px; height:60px; line-height:60px;
+      padding:0; text-align:left; background:transparent; font-size:26px; color:#000;
+      outline:none; font-family: inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .field-input[contenteditable="true"]{ cursor:text; }
+    .field-input[data-placeholder]:empty::before{ content: attr(data-placeholder); color:#b8b8b8; }
 
-.field{ position:absolute; }
-.field input{
-  width:100%; height:100%; padding:0 14px; outline:none;
-  border-radius: var(--radius);
-  border: var(--input-border);
-  font-size: var(--font-size);
-  line-height:1.2; color:#333; font-family: var(--font);
-  background: rgba(255,255,255,.75);  /* 让它可见 */
-  backdrop-filter: blur(2px);
-}
+    /* 基于模版原始尺寸（示例 750x1000） */
+    .class  { top: 414px; left: 190px; }
+    .name   { top: 480px; left: 190px; }
+    .eye    { top: 550px; left: 250px; }
+    .brow   { top: 620px; left: 250px; }
+    .blush  { top: 690px; left: 250px; }
+    .lip    { top: 760px; left: 250px; }
+    .makeup { top: 830px; left: 250px; }
 
-    /* 百分比定位（随图缩放不偏移） */
-    .f-class{ top:16.2%; left:27.6%; width:58.2%; height:2%; }
-    .f-name{  top:18.9%; left:27.6%; width:58.2%; height:2%; }
-    .f-eye{   top:21.6%; left:36.0%; width:50.0%; height:2%; }
-    .f-brow{  top:24.3%; left:36.0%; width:50.0%; height:2%; }
-    .f-blush{ top:27.1%; left:36.0%; width:50.0%; height:2%; }
-    .f-lip{   top:29.8%; left:36.0%; width:50.0%; height:2%; }
-    .f-note{  top:32.5%; left:36.0%; width:50.0%; height:2%; }
+    /* 进度条 */
+    .progress { position: fixed; left: 50%; transform: translateX(-50%); bottom: 20px; background: #fff; color: #333; padding: 12px 16px; border-radius: 10px; font-size: 12px; display:none; z-index:1200; box-shadow:0 6px 24px rgba(0,0,0,0.15); min-width:320px; text-align:left; }
+    .progress .title { font-weight:700; margin-bottom:6px; }
+    .progress .bar { width:100%; height:10px; background:#eee; border-radius:999px; overflow:hidden; }
+    .progress .bar>div { height:100%; width:0%; background:linear-gradient(90deg,#7c3aed,#a855f7); border-radius:999px; transition:width .15s ease; }
+    .progress .desc { margin-top:6px; font-size:12px; color:#666; }
 
-    /* 右侧预览 */
-    .preview-panel{ width:320px; max-width:36vw; background:#fff; border-radius:16px; box-shadow:var(--shadow); padding:16px; position:sticky; top:24px; }
-    .preview-panel h3{ margin:0 0 10px; font-size:16px; }
-    .thumb{ width:100%; height:auto; border-radius:10px; display:block; border:1px solid rgba(0,0,0,.08); background:#fafafa; }
-    .actions{ display:flex; gap:8px; margin-top:10px; }
-    .actions a, .actions button{ flex:1; text-align:center; padding:8px 10px; border-radius:10px; border:none; cursor:pointer; }
-    .actions a{ background:#f3f3f3; color:#222; text-decoration:none; }
-    .actions button{ background:var(--accent); color:#fff; }
-
-    @media (max-width:980px){ .stage{ flex-direction:column; align-items:center; } .preview-panel{ width:min(820px, 92vw); max-width:none; position:static; } }
-    @media (max-width:520px){ :root{ --font-size: 14px; } }
+    /* 缩略图 */
+    #resultThumb { max-width:220px; border:1px solid #ccc; border-radius:8px; display:none; cursor:pointer; background:#fff; }
   </style>
 </head>
 <body>
-  <!-- 顶部操作区（与模版等宽，水平自适应） -->
+  <!-- 工具栏（独立一行） -->
   <div class="toolbar">
-    <button type="button" id="btn-dl">下载模版表格</button>
-    <button type="button" id="btn-up">上传数据文件</button>
-    <button type="button" id="btn-batch">开始批量生成</button>
-    <button type="button" id="btn-preview">生成单个（预览）</button>
+    <button id="downloadTplXlsx">下载模板表格</button>
+    <label for="dataFile">上传数据文件</label>
+    <input id="dataFile" type="file" accept=".csv,.xlsx,.xls" />
+    <button id="batchGen">开始批量生成</button>
+    <button id="singlePreviewBtn">生成单个（预览）</button>
   </div>
 
-  <div class="stage">
-    <!-- 左：模版与编辑框（等比缩放） -->
-    <div class="template-wrap" id="wrap">
-      <!-- 如果这张图加载失败，会在同位置显示可点击的提示，让你选择本地图片作为背景 -->
-      <img id="tpl" src="template.png" alt="妆容报告模版" />
-      <div id="bgTip" style="display:none;position:absolute;left:0;top:45%;width:100%;text-align:center;color:#888;">
-        未找到/无法导出背景图，点击这里选择一张本地图片
-      </div>
-      <input id="bgFile" type="file" accept="image/*" style="display:none" />
+  <!-- 进度条 -->
+  <div id="prog" class="progress">
+    <div class="title">批量生成进度</div>
+    <div class="bar"><div id="progFill"></div></div>
+    <div class="desc" id="progText">准备开始…</div>
+  </div>
 
-      <div class="overlay">
-        <div class="field f-class"><input id="班级" placeholder="班级" /></div>
-        <div class="field f-name"><input id="姓名" placeholder="姓名" /></div>
-        <div class="field f-eye"><input id="眼妆建议" placeholder="眼妆建议" /></div>
-        <div class="field f-brow"><input id="眉妆建议" placeholder="眉妆建议" /></div>
-        <div class="field f-blush"><input id="腮红建议" placeholder="腮红建议" /></div>
-        <div class="field f-lip"><input id="唇妆建议" placeholder="唇妆建议" /></div>
-        <div class="field f-note"><input id="妆容建议" placeholder="妆容建议" /></div>
+  <!-- 两栏：模版框 + 缩略图（整体居中） -->
+  <div class="content">
+    <div class="stage" id="stage">
+      <div class="frame" id="frame">
+        <div class="frameInner" id="frameInner">
+          <img class="bg" id="bgImg" src="template.png" alt="背景" />
+          <div class="field-input class"  id="class"  contenteditable="true" data-placeholder="班级"></div>
+          <div class="field-input name"   id="name"   contenteditable="true" data-placeholder="姓名"></div>
+          <div class="field-input eye"    id="eye"    contenteditable="true" data-placeholder="眼妆建议"></div>
+          <div class="field-input brow"   id="brow"   contenteditable="true" data-placeholder="眉妆建议"></div>
+          <div class="field-input blush"  id="blush"  contenteditable="true" data-placeholder="腮红建议"></div>
+          <div class="field-input lip"    id="lip"    contenteditable="true" data-placeholder="唇妆建议"></div>
+          <div class="field-input makeup" id="makeup" contenteditable="true" data-placeholder="妆容建议"></div>
+        </div>
       </div>
     </div>
 
-    <!-- 右：预览与导出 -->
-    <aside class="preview-panel">
-      <h3>预览（右键复制图片）</h3>
-      <img id="thumb" class="thumb" alt="预览缩略图" />
-      <div class="actions">
-        <a id="dl" download="妆容报告-预览.png">下载PNG</a>
-        <button id="copyBtn" type="button">复制到剪贴板</button>
-      </div>
-      <small style="display:block; opacity:.7; margin-top:6px;">提示：生成后可右键复制预览图；或点击“下载PNG”。</small>
-    </aside>
+    <div class="thumb">
+      <div style="font-size:14px;color:#555;">单个生成缩略图（右键复制/保存）</div>
+      <img id="resultThumb" alt="预览缩略图" />
+    </div>
   </div>
 
-  <!-- 隐藏文件选择器（Excel 上传） -->
-  <input id="excelFile" type="file" accept=".xlsx,.xls" style="display:none" />
-
-  <!-- 依赖库：xlsx 解析、jszip 打包、file-saver 保存文件 -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
-
   <script>
-  (function(){
-    // ====== 1) 动态生成 Excel 模版并下载（无需本地文件） ======
-    function createExcelTemplate(){
+    function safeName(s){ return String(s||'').trim().replace(/[\\/:*?"<>|]/g,'_').slice(0,60) || 'report'; }
+
+    document.getElementById('downloadTplXlsx').addEventListener('click', () => {
+      const headers = [['班级','姓名','眼妆建议','眉妆建议','腮红建议','唇妆建议','妆容建议']];
+      const ws = XLSX.utils.aoa_to_sheet(headers);
       const wb = XLSX.utils.book_new();
-      const data = [
-        ['班级','姓名','眼妆建议','眉妆建议','腮红建议','唇妆建议','妆容建议'],
-        ['一班','小美','淡棕色眼影','自然眉形','粉色腮红','裸色唇釉','整体妆容自然，适合日常']
-      ];
-      const ws = XLSX.utils.aoa_to_sheet(data);
-      ws['!cols'] = [ {wch:10},{wch:10},{wch:16},{wch:16},{wch:16},{wch:16},{wch:28} ];
-      ws['!freeze'] = { xSplit:0, ySplit:1, topLeftCell:'A2', activePane:'bottomLeft', state:'frozen' };
-      XLSX.utils.book_append_sheet(wb, ws, '模版');
+      XLSX.utils.book_append_sheet(wb, ws, '模板');
       const buf = XLSX.write(wb, { bookType:'xlsx', type:'array' });
-      const blob = new Blob([buf], { type:'application/octet-stream' });
-      saveAs(blob, '妆容报告-模版.xlsx');
+      saveAs(new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), '妆容报告名单模板.xlsx');
+    });
+
+    /* ===== DOM 引用 ===== */
+    const stage      = document.getElementById('stage');
+    const frame      = document.getElementById('frame');
+    const frameInner = document.getElementById('frameInner');
+    const bgImg      = document.getElementById('bgImg');
+    const reportForShot = frameInner;
+
+    /* ===== 基准尺寸与缩放 ===== */
+    let baseW = 750, baseH = 1000;
+    let scale = 1;       // 随窗口自适应的缩放
+    let zoomScale = 1;   // 👈 用户 Ctrl+滚轮 再叠加的缩放（默认 1）
+
+    function layoutByFrame(){
+      if(!baseW || !baseH) return;
+      const availW = Math.max(320, window.innerWidth - 32);
+      const maxH   = window.innerHeight * 0.92;
+      const kW = availW / baseW;
+      const kH = maxH   / baseH;
+      scale = Math.min(1, kW, kH);           // 不超过原图
+
+      const finalScale = scale * zoomScale;  // 👈 叠加用户缩放
+
+      frame.style.width  = (baseW * finalScale) + 'px';
+      frame.style.height = (baseH * finalScale) + 'px';
+      frameInner.style.width  = baseW + 'px';
+      frameInner.style.height = baseH + 'px';
+      frameInner.style.transform = `scale(${finalScale})`;
+      stage.style.width = frame.style.width;
     }
 
-    // ====== 2) 字段配置（百分比坐标） ======
-    const FIELDS = [
-      { key: '班级',     top:16.2, left:27.6, width:58.2, height:2.0 },
-      { key: '姓名',     top:18.9, left:27.6, width:58.2, height:2.0 },
-      { key: '眼妆建议', top:21.6, left:36.0, width:50.0, height:2.0 },
-      { key: '眉妆建议', top:24.3, left:36.0, width:50.0, height:2.0 },
-      { key: '腮红建议', top:27.1, left:36.0, width:50.0, height:2.0 },
-      { key: '唇妆建议', top:29.8, left:36.0, width:50.0, height:2.0 },
-      { key: '妆容建议', top:32.5, left:36.0, width:50.0, height:2.0 },
-    ];
+    bgImg.onload = () => {
+      baseW = bgImg.naturalWidth  || bgImg.width  || baseW;
+      baseH = bgImg.naturalHeight || bgImg.height || baseH;
+      layoutByFrame();
+    };
 
-    // ====== 3) DOM 引用 ======
-    const img = document.getElementById('tpl');
-    const thumb = document.getElementById('thumb');
-    const dl = document.getElementById('dl');
+    let _rf;
+    window.addEventListener('resize', () => {
+      cancelAnimationFrame(_rf);
+      _rf = requestAnimationFrame(layoutByFrame);
+    });
 
-    const btnPreview = document.getElementById('btn-preview');
-    const btnDL = document.getElementById('btn-dl');
-    const btnUpload = document.getElementById('btn-up');
-    const btnBatch = document.getElementById('btn-batch');
-    const copyBtn = document.getElementById('copyBtn');
-    const excelInput = document.getElementById('excelFile');
-    const bgTip = document.getElementById('bgTip');
-    const bgFile = document.getElementById('bgFile');
-
-    // ====== 4) 画布渲染 ======
-    function drawReportToCanvas(dataObj){
-      if(!img || !(img.complete || img.naturalWidth)){
-        alert('背景图未加载或不可用，请确认路径');
-        return null;
+    /* ===== Ctrl+鼠标滚轮：缩放模版框 ===== */
+    window.addEventListener('wheel', (e)=>{
+      if (e.ctrlKey) {                 // 只在按住 Ctrl 时缩放
+        e.preventDefault();
+        const factor = 1.1;
+        zoomScale = e.deltaY < 0 ? zoomScale * factor : zoomScale / factor;
+        zoomScale = Math.min(Math.max(zoomScale, 0.2), 5);  // 限制范围 0.2~5
+        layoutByFrame();
       }
-      const w = img.naturalWidth || img.width;
-      const h = img.naturalHeight || img.height;
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext('2d');
+    }, { passive:false });
 
-      // 背景
-      ctx.drawImage(img, 0, 0, w, h);
-
-      // 文本
-      ctx.fillStyle = '#333';
-      ctx.textBaseline = 'middle';
-      FIELDS.forEach(f => {
-        const x = f.left/100 * w;
-        const y = f.top/100 * h;
-        const fw = f.width/100 * w;
-        const fh = f.height/100 * h;
-        const paddingX = Math.max(10, Math.floor(0.02 * fw));
-        const tx = x + paddingX;      // 左内边距
-        const ty = y + fh/2;          // 垂直居中
-        const val = (dataObj && dataObj[f.key]) ? String(dataObj[f.key]) : '';
-
-        // 字号随高度
-        const fontSize = Math.max(12, Math.floor(0.78 * fh));
-        ctx.font = `${fontSize}px "Microsoft YaHei", system-ui`;
-
-        // 单行裁剪
-        let text = val;
-        while(text && ctx.measureText(text).width > fw - paddingX*2){ text = text.slice(0, -1); }
-        ctx.fillText(text, tx, ty);
-      });
-
-      return canvas;
-    }
-
-    // ====== 5) 预览：对 toDataURL 做安全封装（避免误报 Excel 失败） ======
-    function setPreviewFromCanvas(canvas){
+    /* ===== 生成画布 ===== */
+    async function ensureSafeImageURL(imgEl){
+      let s = imgEl?.src || '';
+      if (!s) throw new Error('尚未选择模板图片。');
       try {
-        const dataURL = canvas.toDataURL('image/png');
-        if(thumb) thumb.src = dataURL;
-        if(dl){ dl.href = dataURL; dl.download = '妆容报告-预览.png'; }
-      } catch (err) {
-        console.warn('预览导出失败（多半为 file:// 或图片跨域）：', err);
-        if(bgTip) bgTip.style.display = 'block';
-        if(location.protocol === 'file:'){
-          alert('预览未生成：你是以 file:// 打开，本地图片被浏览器限制无法导出。\n\n解决：\n1) 用本地服务器打开（例如在目录执行：python -m http.server 5500），访问 http://localhost:5500\n2) 或点击模版上的提示，选择一张本地图片作为背景');
-        }else{
-          alert('预览未生成：背景图与页面不同源且无CORS，画布被浏览器拦截。\n\n解决：\n1) 将图片与页面放同域；\n2) 或给图片服务器开启 CORS，并在 <img> 上加 crossOrigin="anonymous"；\n3) 或点击模版上的提示，选择一张本地图片作为背景');
+        const u = new URL(s, location.href);
+        const same = u.origin === location.origin;
+        if (s.startsWith('blob:') || s.startsWith('data:') || same) return s;
+      } catch(_) {}
+      return await new Promise((res, rej) => {
+        const t = new Image(); t.crossOrigin = 'anonymous';
+        t.onload = () => {
+          try {
+            const c = document.createElement('canvas');
+            c.width = t.naturalWidth; c.height = t.naturalHeight;
+            c.getContext('2d').drawImage(t,0,0);
+            res(c.toDataURL('image/png'));
+          } catch(e){ rej(e); }
+        };
+        t.onerror = () => rej(new Error('模板图片无法转为安全来源。'));
+        t.src = s;
+      });
+    }
+
+    async function renderToCanvas(){
+      const safeURL = await ensureSafeImageURL(bgImg);
+      return await html2canvas(reportForShot, {
+        scale: 2, useCORS: true, allowTaint: false, backgroundColor: null,
+        onclone: (doc) => {
+          const clonedImg = doc.getElementById('bgImg');
+          if (clonedImg) clonedImg.src = safeURL;
         }
-      }
+      });
     }
 
-    function generateThumb(){
-      const dataObj = Object.fromEntries(FIELDS.map(f => [f.key, (document.getElementById(f.key)?.value)||'' ]));
-      const canvas = drawReportToCanvas(dataObj);
-      if(!canvas) return;
-      setPreviewFromCanvas(canvas);
-    }
-
-    // ====== 6) 复制到剪贴板 ======
-    async function copyImage(){
-      const dataObj = Object.fromEntries(FIELDS.map(f => [f.key, (document.getElementById(f.key)?.value)||'' ]));
-      const canvas = drawReportToCanvas(dataObj);
-      if(!canvas) return;
-      try{
-        const blob = await new Promise((resolve, reject) => {
-          try{ canvas.toBlob(resolve, 'image/png'); }catch(e){ reject(e); }
-        });
-        if(!blob) throw new Error('画布导出失败（跨域或 file:// 限制）');
-        if(navigator.clipboard && window.ClipboardItem){
-          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-          alert('已复制到剪贴板');
-        }else{
+    async function canvasToBlobSafe(canvas){
+      return await new Promise((resolve)=>{
+        if (canvas.toBlob){ canvas.toBlob(b=>resolve(b)); }
+        else{
           const dataURL = canvas.toDataURL('image/png');
-          if(thumb) thumb.src = dataURL; if(dl) dl.href = dataURL;
-          alert('已生成图片，右键预览图复制');
+          const byteString = atob(dataURL.split(',')[1]);
+          const len = byteString.length; const u8 = new Uint8Array(len);
+          for (let i=0;i<len;i++) u8[i] = byteString.charCodeAt(i);
+          resolve(new Blob([u8], {type:'image/png'}));
         }
-      }catch(e){
-        console.warn('复制失败：', e);
-        if(bgTip) bgTip.style.display = 'block';
-        alert('复制失败：画布被浏览器拦截。请改用“下载PNG”或按上方提示改用本地服务器/本地背景图。');
-      }
+      });
     }
 
-    // ====== 7) Excel 解析到内存，供批量生成 ======
-    let BATCH_DATA = []; // [{班级:'', 姓名:'', ...}]
+    /* ===== 单个预览 ===== */
+    document.getElementById('singlePreviewBtn').addEventListener('click', async () => {
+      try {
+        const canvas = await renderToCanvas();
+        const dataURL = canvas.toDataURL('image/png');
+        const thumb = document.getElementById('resultThumb');
+        thumb.src = dataURL; thumb.style.display = 'block';
+      } catch (e) { console.error(e); alert('生成失败：' + e.message); }
+    });
 
-    btnUpload?.addEventListener('click', () => excelInput?.click());
-    excelInput?.addEventListener('change', async (e) => {
-      const file = e.target.files && e.target.files[0];
-      if(!file) return;
+    /* ===== 读取数据文件（CSV / Excel） ===== */
+    let dataRows = [];
+    document.getElementById('dataFile').addEventListener('change', async (e)=>{
+      try {
+        const file = e.target.files[0]; if(!file) return;
+        const name = file.name.toLowerCase();
+        if (name.endsWith('.csv')){
+          const text = await file.text();
+          const parsed = Papa.parse(text, { header:true, skipEmptyLines:true });
+          dataRows = parsed.data;
+        } else if (name.endsWith('.xlsx') || name.endsWith('.xls')){
+          const buf = await file.arrayBuffer();
+          const wb = XLSX.read(buf, { type:'array' });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          dataRows = XLSX.utils.sheet_to_json(sheet);
+        } else { alert('不支持的文件类型，请选择 CSV 或 Excel'); return; }
+        alert('已读取 ' + dataRows.length + ' 行数据');
+      } catch(err){ console.error(err); alert('读取表格失败：' + err.message); }
+    });
 
-      // 基本类型校验
-      const ext = (file.name.split('.').pop() || '').toLowerCase();
-      if(!['xlsx','xls'].includes(ext)){
-        alert(`文件类型不支持：.${ext} ，请使用 .xlsx 或 .xls`);
-        e.target.value = '';
-        return;
-      }
+    /* ===== 批量生成 ZIP ===== */
+    document.getElementById('batchGen').addEventListener('click', async ()=>{
+      if (!dataRows.length){ alert('请先选择 CSV/Excel 数据文件'); return; }
+      try { await ensureSafeImageURL(bgImg); } catch(e){ alert(e.message); return; }
 
-      try{
-        // 读取二进制（兼容旧浏览器）
-        let data;
-        if(file.arrayBuffer){ data = await file.arrayBuffer(); }
-        else {
-          data = await new Promise((resolve, reject) => {
-            const fr = new FileReader();
-            fr.onload = () => resolve(fr.result);
-            fr.onerror = reject;
-            fr.readAsArrayBuffer(file);
-          });
+      const panel = document.getElementById('prog');
+      const fill  = document.getElementById('progFill');
+      const text  = document.getElementById('progText');
+      const setProgress = (p,msg)=>{ panel.style.display='block'; fill.style.width = Math.max(0,Math.min(100,p))+'%'; text.textContent = msg||''; };
+
+      try {
+        setProgress(2,'准备开始…');
+        const zip = new JSZip();
+        for(let i=0;i<dataRows.length;i++){
+          const row = dataRows[i];
+          setField('class',  row['班级']    || '');
+          setField('name',   row['姓名']    || '');
+          setField('eye',    row['眼妆建议'] || '');
+          setField('brow',   row['眉妆建议'] || '');
+          setField('blush',  row['腮红建议'] || '');
+          setField('lip',    row['唇妆建议'] || '');
+          setField('makeup', row['妆容建议'] || '');
+
+          await new Promise(r=>requestAnimationFrame(r));
+          const canvas = await renderToCanvas();
+          const blob   = await canvasToBlobSafe(canvas);
+          const filename = safeName(row['姓名'] || ('report_'+(i+1))) + '.png';
+          zip.file(filename, blob);
+
+          const pct = Math.round(((i+1)/dataRows.length)*85);
+          setProgress(pct, `渲染图片：${i+1}/${dataRows.length}`);
         }
-
-        // 解析工作簿
-        const wb = XLSX.read(data, { type:'array' });
-        if(!wb.SheetNames.length) throw new Error('工作簿中没有工作表');
-        const sheetName = wb.SheetNames[0];
-        const json = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval:'' });
-
-        // 列名容错映射
-        const pick = (row, keys) => { for(const k of keys){ if(row[k] !== undefined) return row[k]; } return ''; };
-        BATCH_DATA = json.map(row => ({
-          '班级': pick(row, ['班级','class','Class','班级 ']),
-          '姓名': pick(row, ['姓名','name','Name',' 姓名','姓名 ']),
-          '眼妆建议': pick(row, ['眼妆建议','眼妆','eye','Eye']),
-          '眉妆建议': pick(row, ['眉妆建议','眉妆','brow','Brow']),
-          '腮红建议': pick(row, ['腮红建议','腮红','blush','Blush']),
-          '唇妆建议': pick(row, ['唇妆建议','唇妆','lip','Lip']),
-          '妆容建议': pick(row, ['妆容建议','建议','note','Note'])
-        })).filter(r => Object.values(r).some(v => String(v).trim() !== ''));
-
-        if(!BATCH_DATA.length){
-          throw new Error('未读取到有效数据，请检查列名是否为：班级、姓名、眼妆建议、眉妆建议、腮红建议、唇妆建议、妆容建议');
-        }
-
-        alert(`已载入 ${BATCH_DATA.length} 条记录`);
-        const first = BATCH_DATA[0];
-        FIELDS.forEach(f => { const el = document.getElementById(f.key); if(el) el.value = first[f.key] || ''; });
-        generateThumb();
-        e.target.value = '';
-      }catch(err){
-        console.error('[Excel 解析失败]', err);
-        alert(`解析Excel失败：${err && err.message ? err.message : err}`);
-        e.target.value = '';
+        setProgress(90,'正在打包压缩…');
+        const zipBlob = await zip.generateAsync({ type:'blob' }, m=>{
+          const extra = Math.round((m.percent||0)*0.1);
+          setProgress(90+extra, `压缩中… ${Math.round(m.percent||0)}%`);
+        });
+        setProgress(100,'完成，准备下载…');
+        saveAs(zipBlob, '批量报告.zip');
+      } catch(err){
+        console.error(err);
+        alert('生成过程中出现问题：' + (err && err.message ? err.message : err));
+      } finally {
+        setTimeout(()=>{ panel.style.display='none'; fill.style.width='0%'; text.textContent=''; }, 1500);
       }
     });
 
-    // ====== 8) 批量生成 ZIP：文件名 = 学员姓名.png（为空则学员_序号） ======
-    btnBatch?.addEventListener('click', async () => {
-      if(!BATCH_DATA.length){ alert('请先上传数据文件'); return; }
-      if(!window.JSZip || !window.saveAs){ alert('资源未加载，请确认网络/CDN'); return; }
-      const zip = new JSZip();
-      for(let i=0; i<BATCH_DATA.length; i++){
-        const row = BATCH_DATA[i];
-        const canvas = drawReportToCanvas(row); if(!canvas) return;
-        let blob;
-        try{
-          blob = await new Promise((resolve, reject) => {
-            try{ canvas.toBlob(resolve, 'image/png'); }catch(e){ reject(e); }
-          });
-        }catch(e){
-          console.warn('批量导出失败：', e);
-          alert('批量导出失败：画布被浏览器拦截（跨域或 file://）。请改用本地服务器打开，或点击模版选择本地背景图后重试。');
-          return;
-        }
-        if(!blob){ alert('批量导出失败：画布导出失败。'); return; }
-        const name = (row['姓名'] && String(row['姓名']).trim()) ? String(row['姓名']).trim() : `学员_${i+1}`;
-        zip.file(`${name}.png`, blob);
-      }
-      const zipBlob = await zip.generateAsync({ type:'blob' });
-      saveAs(zipBlob, '妆容报告-批量生成.zip');
-    });
+    function setField(id, v){ const el = document.getElementById(id); if(el) el.textContent = v; }
 
-    // ====== 9) 绑定按钮 ======
-    btnDL?.addEventListener('click', createExcelTemplate);
-    btnPreview?.addEventListener('click', generateThumb);
-    copyBtn?.addEventListener('click', copyImage);
-
-    // ====== 10) 背景图加载兜底：路径/CORS 问题时让用户选择本地图片 ======
-    function showBgPicker(){ if(bgTip) bgTip.style.display='block'; }
-    function hideBgPicker(){ if(bgTip) bgTip.style.display='none'; }
-    if(img){
-      img.addEventListener('error', showBgPicker);
-      img.addEventListener('load', hideBgPicker);
-    }
-    bgTip?.addEventListener('click', ()=> bgFile?.click());
-    bgFile?.addEventListener('change', ()=>{
-      const f = bgFile.files && bgFile.files[0];
-      if(!f) return;
-      const url = URL.createObjectURL(f);
-      img.src = url; // 使用本地选择的图片作为背景（blob: 同源，不会污染画布）
-    });
-  })();
+    if (bgImg.complete) bgImg.onload();
   </script>
 </body>
 </html>
-
-
-
-
