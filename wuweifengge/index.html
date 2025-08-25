@@ -83,7 +83,7 @@
   <!-- 工具栏 -->
   <div class="toolbar">
     <button id="downloadTplXlsx">下载模板表格</button>
-    <label for="dataFile">上传数据文件</label>
+    <label for="dataFile">上传模版数据</label>
     <input id="dataFile" type="file" accept=".csv,.xlsx,.xls" />
     <button id="batchGen">开始批量生成</button>
     <button id="singlePreviewBtn">生成单个（预览）</button>
@@ -136,7 +136,7 @@
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '模板');
       const buf = XLSX.write(wb, { bookType:'xlsx', type:'array' });
-      saveAs(new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), '个人形象风格报告-模板.xlsx');
+      saveAs(new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), '五维风格报告-模板.xlsx');
     });
 
     /* ===== DOM 引用 ===== */
@@ -319,3 +319,4 @@
   </script>
 </body>
 </html>
+
