@@ -24,7 +24,7 @@
     /* 工具栏 */
     .toolbar{
       display:flex; flex-wrap:nowrap; justify-content:center; align-items:center;
-      gap:5px; width:max-content; margin:0 auto 20px; transform:translateX(-106px);
+      gap:5px; width:max-content; margin:0 auto 20px; transform:translateX(-118px);
     }
     .toolbar button, .toolbar label{
       display:inline-flex; align-items:center; justify-content:center;
@@ -51,7 +51,7 @@
       position:absolute;
       display:flex; align-items:center;         /* 垂直居中 */
       padding:0 16px;
-      background:rgba(255,255,255,.75);
+      background:transparent;
       border-radius:12px;
       font-size:18px;                            /* 👈 调整所有输入框字号 */
       color:#000; outline:none; font-family:inherit;
@@ -107,7 +107,7 @@
       <div class="frame" id="frame">
         <div class="frameInner" id="frameInner">
           <!-- 背景图：把文件名换成你的实际文件 -->
-          <img class="bg" id="bgImg" src="色彩定位报告+脸型.png" alt="背景" />
+          <img class="bg" id="bgImg" src="色彩定位报告+脸型.jpg" alt="背景" />
 
           <!-- 输入框（可编辑） -->
           <div class="field-input class"  id="class"  contenteditable="true" data-placeholder="班级"></div>
@@ -146,7 +146,7 @@
 
     /* ===== 基准尺寸与缩放 ===== */
     let baseW = 750, baseH = 1000;
-    let scale = 1, zoomScale = 1;
+    let scale = 1, zoomScale = 2.52;
 
     function layoutByFrame(){
       if(!baseW || !baseH) return;
@@ -317,4 +317,5 @@
   </script>
 </body>
 </html>
+
 
