@@ -25,7 +25,7 @@
       gap: 5px;
       width: max-content;             /* 按内容收缩宽度 */
       margin: 0 auto 20px;            /* 先居中 */
-      transform: translateX(-100px);  /* 再整体向左偏移（需要就调这个数） */
+      transform: translateX(-120px);  /* 再整体向左偏移（需要就调这个数） */
     }
     .toolbar::-webkit-scrollbar{ height: 6px; }
     .toolbar::-webkit-scrollbar-thumb{ background: rgba(0,0,0,.2); border-radius: 3px; }
@@ -163,7 +163,7 @@
     /* ===== 基准尺寸与缩放 ===== */
     let baseW = 750, baseH = 1000;
     let scale = 1;       // 随窗口自适应的缩放
-    let zoomScale = 1;   // 👈 用户 Ctrl+滚轮 再叠加的缩放（默认 1）
+    let zoomScale = 1.8;   // 👈 用户 Ctrl+滚轮 再叠加的缩放（默认 1）
 
     function layoutByFrame(){
       if(!baseW || !baseH) return;
@@ -337,5 +337,6 @@
   </script>
 </body>
 </html>
+
 
 
