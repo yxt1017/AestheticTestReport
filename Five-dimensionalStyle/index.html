@@ -46,7 +46,7 @@
       position:absolute;
       display:flex; align-items:center; /* 垂直居中 */
       padding:0 16px;
-      background: rgba(255,255,255,.75);
+      background: transparent;
       border-radius: 12px;
       font-size: 65px; color:#000; outline:none; font-family: inherit;
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
@@ -102,7 +102,7 @@
       <div class="frame" id="frame">
         <div class="frameInner" id="frameInner">
           <!-- 直接把新图命名为 template.png 放同目录 -->
-          <img class="bg" id="bgImg" src="五维风格.png" alt="背景" />
+          <img class="bg" id="bgImg" src="五维风格.jpg" alt="背景" />
           <!-- ===== 新模板字段（保持 contenteditable） ===== -->
           <div class="field-input class"    id="class"    contenteditable="true" data-placeholder="班级"></div>
           <div class="field-input name"     id="name"     contenteditable="true" data-placeholder="姓名"></div>
@@ -319,5 +319,6 @@
   </script>
 </body>
 </html>
+
 
 
