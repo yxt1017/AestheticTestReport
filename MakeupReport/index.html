@@ -322,7 +322,7 @@
           setProgress(90+extra, `压缩中… ${Math.round(m.percent||0)}%`);
         });
         setProgress(100,'完成，准备下载…');
-        saveAs(zipBlob, '批量报告.zip');
+        saveAs(zipBlob, '妆容报告.zip');
       } catch(err){
         console.error(err);
         alert('生成过程中出现问题：' + (err && err.message ? err.message : err));
@@ -337,6 +337,7 @@
   </script>
 </body>
 </html>
+
 
 
 
